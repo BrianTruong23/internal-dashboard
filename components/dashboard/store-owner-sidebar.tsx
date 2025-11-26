@@ -21,7 +21,7 @@ const routes = [
   },
 ];
 
-export function StoreOwnerSidebar() {
+export function StoreOwnerSidebar({ storeUrl }: { storeUrl?: string }) {
   const pathname = usePathname();
   const router = useRouter();
 
@@ -63,7 +63,7 @@ export function StoreOwnerSidebar() {
       </div>
       <div className="px-3 py-2 space-y-1">
          <Link
-            href="https://example.com"
+            href={storeUrl || "https://example.com"}
             target="_blank"
             className="text-sm group flex p-3 w-full justify-start font-medium cursor-pointer hover:text-white hover:bg-white/10 rounded-lg transition text-zinc-400"
           >

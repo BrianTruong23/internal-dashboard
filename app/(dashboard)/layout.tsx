@@ -24,12 +24,28 @@ export default async function DashboardLayout({
     .single();
 
   const userRole = userData?.role || "owner";
+  
+  // Fetch store URL for "Visit Website" link
+  let storeUrl = "https://example.com"; // Default fallback
+  if (userRole === "owner") {
+    // Get the first store owned by this user
+    const { data: storeData } = await supabase
+      .from("stores")
+      .select("url")
+      .eq("owner_id", user.id)
+      .single();
+    
+    if (storeData?.url) {
+      storeUrl = storeData.url;
+    }
+  }
+
   const SidebarComponent = userRole === "admin" ? AdminSidebar : StoreOwnerSidebar;
 
   return (
     <div className="h-full relative">
       <div className="hidden h-full md:flex md:w-72 md:flex-col md:fixed md:inset-y-0 z-[80] bg-gray-900">
-        <SidebarComponent />
+        <SidebarComponent storeUrl={storeUrl} />
       </div>
       <main className="md:pl-72">
         {children}

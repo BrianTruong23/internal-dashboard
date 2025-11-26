@@ -33,7 +33,7 @@ const routes = [
   },
 ];
 
-export function AdminSidebar() {
+export function AdminSidebar({ storeUrl }: { storeUrl?: string }) {
   const pathname = usePathname();
   const router = useRouter();
 

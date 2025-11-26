@@ -4,6 +4,7 @@ create extension if not exists "uuid-ossp";
 -- Drop existing objects (in correct order due to foreign keys)
 drop trigger if exists on_auth_user_created on auth.users;
 drop function if exists public.handle_new_user();
+drop table if exists public.store_stats cascade;
 drop table if exists public.appointments cascade;
 drop table if exists public.orders cascade;
 drop table if exists public.stores cascade;
@@ -68,12 +69,24 @@ create table public.appointments (
   updated_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
+-- 6. Create store_stats table (for tracking store metrics)
+create table public.store_stats (
+  id uuid default gen_random_uuid() primary key,
+  store_id uuid references public.stores(id) on delete cascade not null,
+  total_revenue numeric(10, 2) not null default 0,
+  total_orders integer not null default 0,
+  total_products_sold integer not null default 0,
+  updated_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  unique(store_id)
+);
+
 -- Enable Row Level Security (RLS)
 alter table public.service_users enable row level security;
 alter table public.stores enable row level security;
 alter table public.orders enable row level security;
 alter table public.user_carts enable row level security;
 alter table public.appointments enable row level security;
+alter table public.store_stats enable row level security;
 
 -- RLS Policies
 
@@ -206,6 +219,28 @@ create policy "Owners can update store appointments"
 -- Admins can view all appointments
 create policy "Admins can view all appointments" 
   on public.appointments for select 
+  using (
+    exists (
+      select 1 from public.service_users 
+      where id = auth.uid() and role = 'admin'
+    )
+  );
+
+-- Store Stats:
+-- Owners can view stats for their stores
+create policy "Owners can view own store stats" 
+  on public.store_stats for select 
+  using (
+    exists (
+      select 1 from public.stores 
+      where stores.id = store_stats.store_id 
+      and stores.owner_id = auth.uid()
+    )
+  );
+
+-- Admins can view all store stats
+create policy "Admins can view all store stats" 
+  on public.store_stats for select 
   using (
     exists (
       select 1 from public.service_users 
