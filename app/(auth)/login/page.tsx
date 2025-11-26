@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { signIn } from "next-auth/react";
+import { createClient } from "@/lib/supabase/client";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Store } from "lucide-react";
 
@@ -20,17 +21,26 @@ export default function LoginPage() {
     const email = formData.get("email") as string;
     const password = formData.get("password") as string;
 
-    const result = await signIn("credentials", {
-      email,
-      password,
-      redirect: false,
-    });
+    const supabase = createClient();
 
-    if (result?.ok) {
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (error) {
+        setError(error.message);
+        setIsLoading(false);
+        return;
+      }
+
+      // Session is handled by middleware, just refresh/redirect
+      router.refresh();
       router.push("/");
-    } else {
+    } catch (err) {
+      setError("An error occurred. Please try again.");
       setIsLoading(false);
-      setError("Invalid email or password");
     }
   }
 
@@ -56,17 +66,18 @@ export default function LoginPage() {
 
       if (response.ok) {
         // Auto sign in after successful registration
-        const result = await signIn("credentials", {
+        const supabase = createClient();
+        const { error: signInError } = await supabase.auth.signInWithPassword({
           email,
           password,
-          redirect: false,
         });
 
-        if (result?.ok) {
-          router.push("/");
+        if (signInError) {
+           setError("Registration successful, but login failed. Please try signing in.");
+           setIsLoading(false);
         } else {
-          setError("Registration successful, but login failed. Please try signing in.");
-          setIsLoading(false);
+           router.refresh();
+           router.push("/");
         }
       } else {
         setError(data.error || "Failed to create account");
@@ -294,8 +305,8 @@ export default function LoginPage() {
         {/* Demo Credentials */}
         <div className="mt-6 p-4 bg-white border border-zinc-200 rounded-lg shadow-sm">
           <p className="text-xs text-zinc-900 font-semibold mb-2">Demo Credentials:</p>
-          <p className="text-xs text-zinc-500">Admin: admin@example.com / password</p>
-          <p className="text-xs text-zinc-500">Store Owner: owner@example.com / password</p>
+          <p className="text-xs text-zinc-500">Admin: admin@example.com / password123</p>
+          <p className="text-xs text-zinc-500">Store Owner: owner@example.com / password123</p>
           <p className="text-xs text-zinc-500 mt-1">Registration Code: superman</p>
         </div>
       </div>

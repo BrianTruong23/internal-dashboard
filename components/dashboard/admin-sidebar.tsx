@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { LayoutDashboard, Users, Store, LogOut, ExternalLink } from "lucide-react";
-import { signOut } from "next-auth/react";
+import { usePathname, useRouter } from "next/navigation";
+import { LayoutDashboard, Users, Store, LogOut, ExternalLink, Settings } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
 const routes = [
@@ -25,13 +25,23 @@ const routes = [
     href: "/stores",
     color: "text-violet-500",
   },
+  {
+    label: "Settings",
+    icon: Settings,
+    href: "/settings",
+    color: "text-gray-500",
+  },
 ];
 
 export function AdminSidebar() {
   const pathname = usePathname();
+  const router = useRouter();
 
   const handleLogout = async () => {
-    await signOut({ callbackUrl: "/login" });
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    router.push("/login");
+    router.refresh();
   };
 
   return (

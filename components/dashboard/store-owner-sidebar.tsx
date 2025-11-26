@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { LayoutDashboard, ShoppingCart, ExternalLink, LogOut } from "lucide-react";
-import { signOut } from "next-auth/react";
+import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
 const routes = [
@@ -23,9 +23,13 @@ const routes = [
 
 export function StoreOwnerSidebar() {
   const pathname = usePathname();
+  const router = useRouter();
 
   const handleLogout = async () => {
-    await signOut({ callbackUrl: "/login" });
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    router.push("/login");
+    router.refresh();
   };
 
   return (

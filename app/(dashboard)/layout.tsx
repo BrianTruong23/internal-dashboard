@@ -1,14 +1,29 @@
-"use client";
-
-import { useSession } from "next-auth/react";
-import { SessionProvider } from "next-auth/react";
+import { createClient } from "@/lib/supabase/server";
 import { AdminSidebar } from "@/components/dashboard/admin-sidebar";
 import { StoreOwnerSidebar } from "@/components/dashboard/store-owner-sidebar";
+import { redirect } from "next/navigation";
 
-function DashboardContent({ children }: { children: React.ReactNode }) {
-  const { data: session } = useSession();
-  const userRole = (session?.user as any)?.role;
+export default async function DashboardLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const supabase = await createClient();
+  
+  const { data: { user } } = await supabase.auth.getUser();
+  
+  if (!user) {
+    redirect("/login");
+  }
 
+  // Fetch user role
+  const { data: userData } = await supabase
+    .from("service_users")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+
+  const userRole = userData?.role || "owner";
   const SidebarComponent = userRole === "admin" ? AdminSidebar : StoreOwnerSidebar;
 
   return (
@@ -20,17 +35,5 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
         {children}
       </main>
     </div>
-  );
-}
-
-export default function DashboardLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  return (
-    <SessionProvider>
-      <DashboardContent>{children}</DashboardContent>
-    </SessionProvider>
   );
 }

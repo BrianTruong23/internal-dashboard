@@ -1,49 +1,38 @@
+import { createClient } from "@/lib/supabase/server";
 import { BadgeCheck, BadgeX, Clock, Package } from "lucide-react";
+import { redirect } from "next/navigation";
 
-const orders = [
-  {
-    id: "ORD001",
-    product: "Wireless Headphones",
-    customer: "John Smith",
-    amount: "$89.99",
-    status: "Completed",
-    date: "2024-11-25",
-  },
-  {
-    id: "ORD002",
-    product: "Smart Watch",
-    customer: "Emma Wilson",
-    amount: "$299.99",
-    status: "Processing",
-    date: "2024-11-26",
-  },
-  {
-    id: "ORD003",
-    product: "Laptop Stand",
-    customer: "Michael Brown",
-    amount: "$45.99",
-    status: "Completed",
-    date: "2024-11-24",
-  },
-  {
-    id: "ORD004",
-    product: "USB-C Cable",
-    customer: "Sarah Davis",
-    amount: "$19.99",
-    status: "Shipped",
-    date: "2024-11-25",
-  },
-  {
-    id: "ORD005",
-    product: "Wireless Mouse",
-    customer: "David Lee",
-    amount: "$34.99",
-    status: "Completed",
-    date: "2024-11-23",
-  },
-];
+export default async function OrdersPage() {
+  const supabase = await createClient();
 
-export default function OrdersPage() {
+  // Check auth
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  // Fetch user role
+  const { data: userData } = await supabase
+    .from("service_users")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+
+  const role = userData?.role;
+  let ordersQuery = supabase.from("orders").select("*, stores(name)");
+
+  // If owner, filter by their stores
+  if (role === "owner") {
+    // We can use the RLS policy which already filters, but being explicit is good too
+    // However, since we have RLS "Owners can view store orders", a simple select should work if RLS is set up correctly.
+    // But let's verify: The RLS says "exists (select 1 from stores where stores.id = orders.store_id and stores.owner_id = auth.uid())"
+    // So yes, just selecting should return only their orders.
+  }
+
+  const { data: orders, error } = await ordersQuery;
+
+  if (error?.message) {
+    return <div>Error loading orders: {error.message}</div>;
+  }
+
   return (
     <div className="flex-1 space-y-4 p-8 pt-6">
       <div className="flex items-center justify-between space-y-2">
@@ -64,7 +53,7 @@ export default function OrdersPage() {
                     Order ID
                   </th>
                   <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
-                    Product
+                    Store
                   </th>
                   <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
                     Customer
@@ -81,45 +70,52 @@ export default function OrdersPage() {
                 </tr>
               </thead>
               <tbody className="[&_tr:last-child]:border-0">
-                {orders.map((order) => (
+                {orders?.map((order: any) => (
                   <tr
                     key={order.id}
                     className="border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted"
                   >
                     <td className="p-4 align-middle font-medium">
-                      {order.id}
+                      {order.id.slice(0, 8)}...
                     </td>
                     <td className="p-4 align-middle">
                       <div className="flex items-center gap-2">
                         <Package className="h-4 w-4 text-muted-foreground" />
-                        {order.product}
+                        {order.stores?.name || "Unknown Store"}
                       </div>
                     </td>
                     <td className="p-4 align-middle">
-                      {order.customer}
+                      {order.customer_email}
                     </td>
                     <td className="p-4 align-middle font-semibold">
-                      {order.amount}
+                      {order.currency} {order.total_price}
                     </td>
                     <td className="p-4 align-middle">
                       <div className="flex items-center gap-2">
-                        {order.status === "Completed" && (
+                        {order.status === "paid" && (
                           <BadgeCheck className="h-4 w-4 text-green-500" />
                         )}
-                        {order.status === "Processing" && (
+                        {order.status === "pending" && (
                           <Clock className="h-4 w-4 text-yellow-500" />
                         )}
-                        {order.status === "Shipped" && (
+                        {order.status === "shipped" && (
                           <Package className="h-4 w-4 text-blue-500" />
                         )}
-                        {order.status}
+                        <span className="capitalize">{order.status}</span>
                       </div>
                     </td>
                     <td className="p-4 align-middle text-muted-foreground">
-                      {new Date(order.date).toLocaleDateString()}
+                      {new Date(order.created_at).toLocaleDateString()}
                     </td>
                   </tr>
                 ))}
+                {orders?.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="p-4 text-center text-muted-foreground">
+                      No orders found.
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>

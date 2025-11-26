@@ -1,0 +1,38 @@
+[
+  {
+    "id": "1",
+    "name": "Fashion Boutique",
+    "userId": "1",
+    "url": "https://fashionboutique.com",
+    "category": "Fashion",
+    "createdAt": "2024-01-15T00:00:00.000Z",
+    "lastActive": "2024-11-20T00:00:00.000Z"
+  },
+  {
+    "id": "2",
+    "name": "Tech Gadgets Store",
+    "userId": "1",
+    "url": "https://techgadgets.com",
+    "category": "Electronics",
+    "createdAt": "2024-02-20T00:00:00.000Z",
+    "lastActive": "2024-11-25T00:00:00.000Z"
+  },
+  {
+    "id": "3",
+    "name": "Organic Foods Market",
+    "userId": "2",
+    "url": "https://organicfoods.com",
+    "category": "Food & Beverage",
+    "createdAt": "2024-03-10T00:00:00.000Z",
+    "lastActive": "2024-11-22T00:00:00.000Z"
+  },
+  {
+    "id": "4",
+    "name": "My Store",
+    "userId": "3",
+    "url": "https://ofcourt-badminton.vercel.app/",
+    "category": "Uncategorized",
+    "createdAt": "2025-11-26T19:26:43.988Z",
+    "lastActive": "2025-11-26T19:26:43.988Z"
+  }
+]

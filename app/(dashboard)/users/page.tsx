@@ -1,59 +1,39 @@
+import { createClient } from "@/lib/supabase/server";
 import { Shield, User, Store } from "lucide-react";
+import { redirect } from "next/navigation";
 
-const usersWithStores = [
-  {
-    id: "1",
-    name: "Admin User",
-    email: "admin@example.com",
-    role: "Admin",
-    status: "Active",
-    storeCount: 2,
-    stores: ["Fashion Boutique", "Tech Gadgets Store"],
-    joinedDate: "2024-01-15",
-  },
-  {
-    id: "2",
-    name: "John Merchant",
-    email: "john@example.com",
-    role: "User",
-    status: "Active",
-    storeCount: 1,
-    stores: ["Organic Foods Market"],
-    joinedDate: "2024-03-10",
-  },
-  {
-    id: "3",
-    name: "Sarah Johnson",
-    email: "sarah.j@example.com",
-    role: "User",
-    status: "Active",
-    storeCount: 2,
-    stores: ["Beauty & Wellness", "Home Decor Shop"],
-    joinedDate: "2024-11-18",
-  },
-  {
-    id: "4",
-    name: "Mike Chen",
-    email: "mike.c@example.com",
-    role: "User",
-    status: "Active",
-    storeCount: 1,
-    stores: ["Sports Equipment Co"],
-    joinedDate: "2024-11-19",
-  },
-  {
-    id: "5",
-    name: "Emily Davis",
-    email: "emily.d@example.com",
-    role: "User",
-    status: "Active",
-    storeCount: 3,
-    stores: ["Pet Supplies Plus", "Kids Toys & Games", "Book Haven"],
-    joinedDate: "2024-11-20",
-  },
-];
+export default async function UsersPage() {
+  const supabase = await createClient();
+  
+  // Check auth and role
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
 
-export default function UsersPage() {
+  const { data: currentUserData } = await supabase
+    .from("service_users")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+
+  if (currentUserData?.role !== "admin") {
+    redirect("/");
+  }
+
+  // Fetch all users with their stores
+  const { data: users, error } = await supabase
+    .from("service_users")
+    .select(`
+      *,
+      stores (
+        name
+      )
+    `);
+
+  if (error) {
+    console.error("Error fetching users:", error);
+    return <div>Error loading users</div>;
+  }
+
   return (
     <div className="flex-1 space-y-4 p-8 pt-6">
       <div className="flex items-center justify-between space-y-2">
@@ -88,13 +68,10 @@ export default function UsersPage() {
                   <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
                     Joined
                   </th>
-                  <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
-                    Status
-                  </th>
                 </tr>
               </thead>
               <tbody className="[&_tr:last-child]:border-0">
-                {usersWithStores.map((user) => (
+                {users?.map((user: any) => (
                   <tr
                     key={user.id}
                     className="border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted"
@@ -104,7 +81,8 @@ export default function UsersPage() {
                         <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center">
                           <User className="h-4 w-4" />
                         </div>
-                        <span className="font-medium">{user.name}</span>
+                        {/* Name is not in service_users table yet, using email or metadata if available */}
+                        <span className="font-medium">User</span> 
                       </div>
                     </td>
                     <td className="p-4 align-middle">
@@ -113,36 +91,31 @@ export default function UsersPage() {
                     <td className="p-4 align-middle">
                       <div className="flex items-center gap-2">
                         <Store className="h-4 w-4 text-primary" />
-                        <span className="font-semibold">{user.storeCount}</span>
+                        <span className="font-semibold">{user.stores?.length || 0}</span>
                       </div>
                     </td>
                     <td className="p-4 align-middle">
                       <div className="flex flex-col gap-1">
-                        {user.stores.map((store, idx) => (
+                        {user.stores?.map((store: any, idx: number) => (
                           <span
                             key={idx}
                             className="text-xs bg-secondary px-2 py-1 rounded-md inline-block"
                           >
-                            {store}
+                            {store.name}
                           </span>
                         ))}
                       </div>
                     </td>
                     <td className="p-4 align-middle">
                       <div className="flex items-center gap-2">
-                        {user.role === "Admin" && (
+                        {user.role === "admin" && (
                           <Shield className="h-4 w-4 text-blue-500" />
                         )}
-                        {user.role}
+                        <span className="capitalize">{user.role}</span>
                       </div>
                     </td>
                     <td className="p-4 align-middle text-muted-foreground">
-                      {new Date(user.joinedDate).toLocaleDateString()}
-                    </td>
-                    <td className="p-4 align-middle">
-                      <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300">
-                        {user.status}
-                      </span>
+                      {new Date(user.created_at).toLocaleDateString()}
                     </td>
                   </tr>
                 ))}

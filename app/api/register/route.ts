@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { userStorage } from "@/lib/users";
+import { createClient } from "@/lib/supabase/server";
 
 export async function POST(request: NextRequest) {
   try {
@@ -22,26 +22,52 @@ export async function POST(request: NextRequest) {
     }
 
     console.log(`[Register API] Creating user: ${email}`);
-    const user = userStorage.create(email, password, name);
-    console.log(`[Register API] User created successfully: ${user.id}`);
+    
+    // Create user in Supabase Auth
+    const supabase = await createClient();
+    const { data, error: signUpError } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          name,
+          role: "owner", // Default role
+        },
+      },
+    });
+
+    if (signUpError) {
+      console.error(`[Register API] Supabase Auth Error:`, signUpError);
+      return NextResponse.json(
+        { error: signUpError.message },
+        { status: 400 }
+      );
+    }
+
+    if (!data.user) {
+      return NextResponse.json(
+        { error: "Failed to create user" },
+        { status: 500 }
+      );
+    }
+
+    // Note: The trigger in Supabase will handle creating the service_users row
+    
+    console.log(`[Register API] User created successfully: ${data.user.id}`);
 
     return NextResponse.json(
       {
         success: true,
         user: {
-          id: user.id,
-          email: user.email,
-          name: user.name,
+          id: data.user.id,
+          email: data.user.email,
+          name: name,
         },
       },
       { status: 201 }
     );
   } catch (error: any) {
     console.error(`[Register API] Error:`, error);
-    if (error.message === "User already exists") {
-      return NextResponse.json({ error: error.message }, { status: 409 });
-    }
-
     return NextResponse.json(
       { error: "Failed to create user" },
       { status: 500 }
