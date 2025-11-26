@@ -1,0 +1,26 @@
+[
+  {
+    "id": "1",
+    "email": "admin@example.com",
+    "password": "password",
+    "name": "Admin User",
+    "role": "admin",
+    "createdAt": "2025-11-26T19:08:54.524Z"
+  },
+  {
+    "id": "2",
+    "email": "owner@example.com",
+    "password": "password",
+    "name": "Store Owner",
+    "role": "storeOwner",
+    "createdAt": "2025-11-26T19:08:54.524Z"
+  },
+  {
+    "id": "3",
+    "email": "t@gmail.com",
+    "password": "password",
+    "name": "Brian Quach",
+    "role": "storeOwner",
+    "createdAt": "2025-11-26T19:08:54.533Z"
+  }
+]
