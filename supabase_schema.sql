@@ -4,6 +4,7 @@ create extension if not exists "uuid-ossp";
 -- Drop existing objects (in correct order due to foreign keys)
 drop trigger if exists on_auth_user_created on auth.users;
 drop function if exists public.handle_new_user();
+drop table if exists public.order_products cascade;
 drop table if exists public.store_stats cascade;
 drop table if exists public.appointments cascade;
 drop table if exists public.orders cascade;
@@ -80,6 +81,20 @@ create table public.store_stats (
   unique(store_id)
 );
 
+-- 7. Create order_products table (order line items with product details)
+create table public.order_products (
+  id uuid default gen_random_uuid() primary key,
+  order_id uuid references public.orders(id) on delete cascade not null,
+  store_id uuid references public.stores(id) on delete cascade not null,
+  product_name text not null,
+  sku text,
+  quantity integer not null default 1,
+  unit_price numeric(10, 2) not null,
+  currency text default 'USD',
+  line_total numeric(10, 2) not null,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
 -- Enable Row Level Security (RLS)
 alter table public.service_users enable row level security;
 alter table public.stores enable row level security;
@@ -87,6 +102,7 @@ alter table public.orders enable row level security;
 alter table public.user_carts enable row level security;
 alter table public.appointments enable row level security;
 alter table public.store_stats enable row level security;
+alter table public.order_products enable row level security;
 
 -- RLS Policies
 
@@ -241,6 +257,28 @@ create policy "Owners can view own store stats"
 -- Admins can view all store stats
 create policy "Admins can view all store stats" 
   on public.store_stats for select 
+  using (
+    exists (
+      select 1 from public.service_users 
+      where id = auth.uid() and role = 'admin'
+    )
+  );
+
+-- Order Products:
+-- Owners can view order products for their stores
+create policy "Owners can view own order products" 
+  on public.order_products for select 
+  using (
+    exists (
+      select 1 from public.stores 
+      where stores.id = order_products.store_id 
+      and stores.owner_id = auth.uid()
+    )
+  );
+
+-- Admins can view all order products
+create policy "Admins can view all order products" 
+  on public.order_products for select 
   using (
     exists (
       select 1 from public.service_users 

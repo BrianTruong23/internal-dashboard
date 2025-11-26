@@ -46,6 +46,23 @@ export default async function StoreOwnerOverviewPage() {
 
   console.log("Stats Data:", stats);
   console.log("Stats Error:", statsError);
+
+  // Fetch store stats for chart using updated_at as date
+  const { data: chartStats } = await supabase
+    .from("store_stats")
+    .select("updated_at, total_revenue, total_orders, total_products_sold")
+    .in("store_id", storeIds)
+    .order("updated_at");
+
+  // Format for chart - use updated_at date
+  const formattedChartData = chartStats?.map((stat: any) => ({
+    date: new Date(stat.updated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+    revenue: Number(stat.total_revenue) || 0,
+    products_sold: stat.total_products_sold || 0,
+    total_orders: stat.total_orders || 0,
+  })) || [];
+
+  console.log("Chart Data:", formattedChartData);
   console.log("=== END DEBUG ===");
 
   // Aggregate stats for cards
@@ -94,16 +111,13 @@ export default async function StoreOwnerOverviewPage() {
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
         <div className="col-span-7 rounded-xl border bg-card text-card-foreground shadow-sm">
           <div className="p-6 flex flex-col space-y-1.5">
-            <h3 className="font-semibold leading-none tracking-tight">Performance Tracking</h3>
+            <h3 className="font-semibold leading-none tracking-tight">Store Performance</h3>
             <p className="text-sm text-muted-foreground">
-              Time-series charts require a date column in store_stats table
+              Track your store's metrics over time
             </p>
           </div>
           <div className="p-6 pt-0">
-            <div className="text-sm text-muted-foreground">
-              <p className="mb-2">Your store_stats table currently only stores aggregate totals without date tracking.</p>
-              <p>To enable performance charts over time, you would need to add a <code className="bg-muted px-1 py-0.5 rounded">date</code> column to track daily metrics.</p>
-            </div>
+            <StoreStatsChart data={formattedChartData} />
           </div>
         </div>
       </div>
