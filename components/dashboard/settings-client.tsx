@@ -2,10 +2,19 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { User } from "@/lib/users";
-import { Store } from "@/lib/stores";
 import { Button } from "@/components/ui/button";
 import { ExternalLink, Save, Globe } from "lucide-react";
+
+interface User {
+  id: string;
+  name: string;
+  email: string;
+}
+
+interface Store {
+  userId: string;
+  url?: string;
+}
 
 interface SettingsClientProps {
   users: User[];
