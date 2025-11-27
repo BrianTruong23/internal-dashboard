@@ -1,3 +1,6 @@
+/* app/(dashboard)/users/page.tsx */
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { UsersTable } from "@/components/users/users-table";
@@ -30,82 +33,157 @@ export default async function UsersPage() {
     // ADMIN PATH
     // ============================
 
-    // 1. Fetch all stores (for filters / UI)
-    {
-      const { data: allStores, error: storesError } = await supabase
-        .from("stores")
-        .select("id, name")
-        .order("name");
-
-      if (storesError) {
-        console.error("Error fetching stores for admin:", storesError);
-      }
-
-      storesList = allStores || [];
-    }
-
-    // 2. Fetch base service_users with owners/clients joins
+    // 1. Fetch base users + role
     const {
       data: serviceUsers,
       error: serviceUsersError,
     } = await supabase
       .from("service_users")
-      .select(
-        `
-        id,
-        role,
-        created_at,
-        owners (
-          email,
-          name
-        ),
-        clients (
-          email,
-          name,
-          store_id
-        )
-      `
-      )
+      .select("id, role, created_at")
       .order("created_at", { ascending: false });
 
-    // 3. Fetch admins list to tag admins
-    const { data: adminsList, error: adminsError } = await supabase
-      .from("admins")
-      .select("id");
+    console.log("ADMIN: serviceUsers =", serviceUsers);
 
-    if (adminsError) {
-      console.error("Error fetching admins list:", adminsError);
+    if (serviceUsersError) {
+      console.error("Error fetching service_users:", serviceUsersError);
+      error = serviceUsersError;
     }
 
-    const adminIds = new Set((adminsList || []).map((a) => a.id));
+    // 2. Fetch admins, owners, clients (with store), stores in parallel
+    const [adminsRes, ownersRes, clientsRes, storesRes] = await Promise.all([
+      supabase.from("admins").select("id, email, name"),
+      supabase.from("owners").select("id, email, name"),
+      supabase
+        .from("clients")
+        .select(
+          `
+          id,
+          email,
+          name,
+          store_id,
+          created_at,
+          store:stores (
+            id,
+            name,
+            owner_id
+          )
+        `
+        ),
+      supabase.from("stores").select("id, name, owner_id").order("name"),
+    ]);
 
-    // 4. Merge and determine correct role per user
+    const admins = adminsRes.data || [];
+    const owners = ownersRes.data || [];
+    const clients = clientsRes.data || [];
+    const stores = storesRes.data || [];
+
+    console.log("ADMIN: admins =", admins);
+    console.log("ADMIN: owners =", owners);
+    console.log("ADMIN: clients (with store) =", clients);
+    console.log("ADMIN: stores =", stores);
+
+    if (adminsRes.error) console.error("Error fetching admins:", adminsRes.error);
+    if (ownersRes.error) console.error("Error fetching owners:", ownersRes.error);
+    if (clientsRes.error) console.error("Error fetching clients:", clientsRes.error);
+    if (storesRes.error) console.error("Error fetching stores:", storesRes.error);
+
+    storesList = stores; // for filters / UI
+
+    // 3. Build lookup maps
+    const adminsById: Record<string, any> = {};
+    admins.forEach((a) => {
+      adminsById[a.id] = a;
+    });
+
+    const ownersById: Record<string, any> = {};
+    owners.forEach((o) => {
+      ownersById[o.id] = o;
+    });
+
+    const clientsById: Record<string, any> = {};
+    clients.forEach((c) => {
+      clientsById[c.id] = c;
+    });
+
+    const storesById: Record<string, any> = {};
+    stores.forEach((s) => {
+      storesById[s.id] = s;
+    });
+
+    const storesByOwnerId: Record<string, any[]> = {};
+    stores.forEach((s) => {
+      if (!storesByOwnerId[s.owner_id]) {
+        storesByOwnerId[s.owner_id] = [];
+      }
+      storesByOwnerId[s.owner_id].push(s);
+    });
+
+    console.log("ADMIN: storesByOwnerId =", storesByOwnerId);
+
+    // 4. Merge data per service_user
     users =
       serviceUsers?.map((u: any) => {
-        let realRole = u.role;
+        const admin = adminsById[u.id];
+        const owner = ownersById[u.id];
+        const client = clientsById[u.id];
 
-        if (adminIds.has(u.id)) {
-          realRole = "admin";
-        } else if (u.owners) {
-          realRole = "owner";
-        } else if (u.clients) {
-          realRole = "client";
+        let role: string = u.role;
+        let email: string | null = null;
+        let name: string | null = null;
+        let userStores: any[] = [];
+
+        if (admin) {
+          role = "admin";
+          email = admin.email;
+          name = admin.name;
+        } else if (owner) {
+          role = "owner";
+          email = owner.email;
+          name = owner.name;
+          userStores = storesByOwnerId[u.id] || [];
+        } else if (client) {
+          role = "client";
+          email = client.email;
+          name = client.name;
+
+          const clientStore =
+            (client as any).store ||
+            (client.store_id ? storesById[client.store_id] : null);
+
+          if (clientStore) {
+            userStores = [clientStore];
+          }
         }
 
-        const details = u.owners || u.clients || {};
+        const storeNames = (userStores || [])
+          .map((s: any) => s?.name)
+          .filter(Boolean);
+        const primaryStoreName = storeNames[0] ?? null;
 
-        return {
+        const mergedUser = {
           id: u.id,
-          email: details.email || "No Email",
-          name: details.name || "No Name",
-          role: realRole,
+          email: email || "No Email",
+          name: name || "No Name",
+          role,
           created_at: u.created_at,
-          // you can later wire this up if you want per-user stores
-          stores: [],
+          stores: userStores,          // full objects (id, name, owner_id)
+          storeNames,                  // ["Store A", "Store B", ...]
+          primaryStoreName,            // "Store A"
         };
+
+        console.log("ADMIN: merged user =", mergedUser);
+
+        return mergedUser;
       }) || [];
 
-    error = serviceUsersError;
+    // propagate any base error
+    error =
+      error ||
+      serviceUsersError ||
+      adminsRes.error ||
+      ownersRes.error ||
+      clientsRes.error ||
+      storesRes.error;
   } else {
     // ============================
     // OWNER PATH
@@ -115,8 +193,10 @@ export default async function UsersPage() {
     // 1. Get stores owned by this user
     const { data: ownerStores, error: ownerStoresError } = await supabase
       .from("stores")
-      .select("id, name")
+      .select("id, name, owner_id")
       .eq("owner_id", user.id);
+
+    console.log("OWNER: ownerStores =", ownerStores);
 
     if (ownerStoresError) {
       console.error("Error fetching owner stores:", ownerStoresError);
@@ -128,49 +208,67 @@ export default async function UsersPage() {
     if (storeIds.length === 0) {
       // No stores = no clients
       users = [];
-      error = null;
+      error = ownerStoresError ?? null;
     } else {
+      // Build a map of store_id -> store object for quick lookup
+      const storeMap: Record<string, any> = {};
+      (ownerStores || []).forEach((s) => {
+        storeMap[s.id] = s;
+      });
+
+      console.log("OWNER: storeMap =", storeMap);
+
       // 2. Get clients whose store_id is in the owner's stores
       const {
         data: clientsData,
         error: clientsError,
       } = await supabase
         .from("clients")
-        .select(
-          `
-          id,
-          email,
-          name,
-          store_id,
-          created_at
-        `
-        )
+        .select("id, email, name, store_id, created_at")
         .in("store_id", storeIds);
+
+      console.log("OWNER: clientsData =", clientsData);
 
       if (clientsError) {
         console.error("Error fetching clients for owner:", clientsError);
       }
 
       users =
-        clientsData?.map((c: any) => ({
-          id: c.id,
-          email: c.email,
-          name: c.name,
-          role: "client",
-          created_at: c.created_at,
-          store_id: c.store_id,
-          stores: [], // can be enriched on the UI using storesList if needed
-        })) || [];
+        clientsData?.map((c: any) => {
+          const store = c.store_id ? storeMap[c.store_id] : null;
+          const userStores = store ? [store] : [];
 
-      error = clientsError;
+          const storeNames = (userStores || [])
+            .map((s: any) => s?.name)
+            .filter(Boolean);
+          const primaryStoreName = storeNames[0] ?? null;
+
+          const mergedUser = {
+            id: c.id,
+            email: c.email || "No Email",
+            name: c.name || "No Name",
+            role: "client",
+            created_at: c.created_at,
+            store_id: c.store_id,
+            stores: userStores,
+            storeNames,
+            primaryStoreName,
+          };
+
+          console.log("OWNER: merged user =", mergedUser);
+
+          return mergedUser;
+        }) || [];
+
+      error = clientsError || ownerStoresError || null;
     }
   }
 
-  console.log("Final users:", users);
-  console.log("Final error:", error);
+  console.log("Final users array:", users);
+  console.log("Final error object:", error);
 
   if (error?.message) {
-    console.error("Error fetching users:", error);
+    console.error("Error loading users:", error);
     return <div>Error loading users: {error.message}</div>;
   }
 
@@ -189,6 +287,7 @@ export default async function UsersPage() {
         </div>
       </div>
 
+      {/* UsersTable can now use user.storeNames or user.primaryStoreName to display stores */}
       <UsersTable users={users || []} stores={storesList || []} />
     </div>
   );

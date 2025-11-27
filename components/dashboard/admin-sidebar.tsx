@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LayoutDashboard, Users, Store, LogOut, ExternalLink, Settings } from "lucide-react";
+import { LayoutDashboard, Users, Store, LogOut, ExternalLink, Settings, ShoppingCart } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
@@ -26,10 +26,16 @@ const routes = [
     color: "text-violet-500",
   },
   {
-    label: "Settings",
+    label: "Assign Stores",
     icon: Settings,
     href: "/settings",
     color: "text-gray-500",
+  },
+  {
+    label: "Create Store",
+    icon: ShoppingCart,
+    href: "/create-store",
+    color: "text-green-700",
   },
 ];
 

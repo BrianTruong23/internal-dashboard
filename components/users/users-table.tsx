@@ -8,7 +8,9 @@ interface UserData {
   email: string;
   role: string;
   created_at: string;
-  stores: { name: string } | null;
+  stores: any[];
+  storeNames: string[];
+  primaryStoreName: string | null;
 }
 
 interface StoreOption {
@@ -31,7 +33,10 @@ export function UsersTable({ users, stores }: { users: UserData[], stores: Store
 
     // Filter by store
     if (storeFilter !== "all") {
-      filtered = filtered.filter(user => user.stores?.name === storeFilter);
+      filtered = filtered.filter(user => 
+        user.storeNames?.includes(storeFilter) || 
+        user.primaryStoreName === storeFilter
+      );
     }
 
     // Filter by role
@@ -45,14 +50,14 @@ export function UsersTable({ users, stores }: { users: UserData[], stores: Store
       let bVal: any;
 
       if (sortField === "store_name") {
-        aVal = a.stores?.name || "";
-        bVal = b.stores?.name || "";
+        aVal = a.primaryStoreName || "";
+        bVal = b.primaryStoreName || "";
       } else if (sortField === "created_at") {
         aVal = new Date(a.created_at).getTime();
         bVal = new Date(b.created_at).getTime();
       } else {
-        aVal = (a[sortField] || "").toLowerCase();
-        bVal = (b[sortField] || "").toLowerCase();
+        aVal = (a[sortField as keyof UserData] || "").toString().toLowerCase();
+        bVal = (b[sortField as keyof UserData] || "").toString().toLowerCase();
       }
 
       if (sortDirection === "asc") {
@@ -123,7 +128,6 @@ export function UsersTable({ users, stores }: { users: UserData[], stores: Store
             {stores.map(store => (
               <option key={store.id} value={store.name}>{store.name}</option>
             ))}
-            <option value="__unassigned__">Unassigned</option>
           </select>
         </div>
 
@@ -222,7 +226,15 @@ export function UsersTable({ users, stores }: { users: UserData[], stores: Store
                         </span>
                       </td>
                       <td className="p-4 align-middle">
-                        {user.stores?.name || (
+                        {user.storeNames && user.storeNames.length > 0 ? (
+                          <div className="flex flex-col gap-1">
+                            {user.storeNames.map((name, idx) => (
+                              <span key={idx} className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-zinc-100 text-zinc-800">
+                                {name}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
                           <span className="text-muted-foreground italic">No store assigned</span>
                         )}
                       </td>

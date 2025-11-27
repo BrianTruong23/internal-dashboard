@@ -18,6 +18,12 @@ const routes = [
     href: "/users",
     color: "text-pink-700",
   },
+  {
+    label: "Create Store",
+    icon: ShoppingCart, // Reusing ShoppingCart or maybe PlusCircle would be better but keeping imports simple
+    href: "/create-store",
+    color: "text-green-700",
+  },
 ];
 
 export function Sidebar() {
