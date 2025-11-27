@@ -11,22 +11,31 @@ drop table if exists public.orders cascade;
 drop table if exists public.website_builder_subscriptions cascade;
 drop table if exists public.stores cascade;
 drop table if exists public.user_carts cascade;
+drop table if exists public.clients cascade;
+drop table if exists public.owners cascade;
 drop table if exists public.service_users cascade;
 
--- 1. Create service_users table (Platform users: Admins + Store Owners + Clients)
--- Note: Foreign key to stores added later to avoid circular dependency
+-- 1. Create service_users table (Base table for all users)
 CREATE TABLE public.service_users (
   id uuid NOT NULL,
-  email text NOT NULL,
   role text NOT NULL,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
-  store_id uuid,
-  name text,
   CONSTRAINT service_users_pkey PRIMARY KEY (id),
   CONSTRAINT service_users_id_fkey FOREIGN KEY (id) REFERENCES auth.users(id)
 );
 
--- 2. Create stores table
+-- 2. Create owners table (Inherits from service_users)
+CREATE TABLE public.owners (
+  id uuid NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  email text,
+  name text,
+  role text,
+  CONSTRAINT owners_pkey PRIMARY KEY (id),
+  CONSTRAINT owners_id_fkey FOREIGN KEY (id) REFERENCES public.service_users(id)
+);
+
+-- 3. Create stores table
 CREATE TABLE public.stores (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   owner_id uuid NOT NULL,
@@ -40,11 +49,20 @@ CREATE TABLE public.stores (
   CONSTRAINT stores_owner_id_fkey FOREIGN KEY (owner_id) REFERENCES public.service_users(id)
 );
 
--- Add circular foreign key for service_users
-ALTER TABLE public.service_users 
-ADD CONSTRAINT service_users_store_id_fkey FOREIGN KEY (store_id) REFERENCES public.stores(id);
+-- 4. Create clients table (Inherits from service_users, linked to a store)
+CREATE TABLE public.clients (
+  id uuid NOT NULL,
+  store_id uuid,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  email text,
+  name text,
+  role text,
+  CONSTRAINT clients_pkey PRIMARY KEY (id),
+  CONSTRAINT clients_id_fkey FOREIGN KEY (id) REFERENCES public.service_users(id),
+  CONSTRAINT clients_store_id_fkey FOREIGN KEY (store_id) REFERENCES public.stores(id)
+);
 
--- 3. Create orders table
+-- 5. Create orders table
 CREATE TABLE public.orders (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   store_id uuid NOT NULL,
@@ -58,7 +76,7 @@ CREATE TABLE public.orders (
   CONSTRAINT orders_store_id_fkey FOREIGN KEY (store_id) REFERENCES public.stores(id)
 );
 
--- 4. Create user_carts table
+-- 6. Create user_carts table (Linked to clients)
 CREATE TABLE public.user_carts (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   user_id uuid NOT NULL,
@@ -66,10 +84,10 @@ CREATE TABLE public.user_carts (
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
   CONSTRAINT user_carts_pkey PRIMARY KEY (id),
-  CONSTRAINT user_carts_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+  CONSTRAINT user_carts_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.clients(id)
 );
 
--- 5. Create appointments table
+-- 7. Create appointments table (Linked to clients)
 CREATE TABLE public.appointments (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   store_id uuid NOT NULL,
@@ -83,11 +101,13 @@ CREATE TABLE public.appointments (
   notes text,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  client_id uuid,
   CONSTRAINT appointments_pkey PRIMARY KEY (id),
+  CONSTRAINT appointments_client_id_fkey FOREIGN KEY (client_id) REFERENCES public.clients(id),
   CONSTRAINT appointments_store_id_fkey FOREIGN KEY (store_id) REFERENCES public.stores(id)
 );
 
--- 6. Create store_stats table
+-- 8. Create store_stats table
 CREATE TABLE public.store_stats (
   store_id uuid NOT NULL,
   total_revenue numeric NOT NULL DEFAULT 0,
@@ -98,7 +118,7 @@ CREATE TABLE public.store_stats (
   CONSTRAINT store_stats_store_id_fkey FOREIGN KEY (store_id) REFERENCES public.stores(id)
 );
 
--- 7. Create order_products table
+-- 9. Create order_products table
 CREATE TABLE public.order_products (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   order_id uuid NOT NULL,
@@ -115,7 +135,7 @@ CREATE TABLE public.order_products (
   CONSTRAINT order_products_store_id_fkey FOREIGN KEY (store_id) REFERENCES public.stores(id)
 );
 
--- 8. Create website_builder_subscriptions table
+-- 10. Create website_builder_subscriptions table
 CREATE TABLE public.website_builder_subscriptions (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   owner_id uuid NOT NULL UNIQUE,
@@ -136,6 +156,8 @@ CREATE TABLE public.website_builder_subscriptions (
 
 -- Enable Row Level Security (RLS)
 alter table public.service_users enable row level security;
+alter table public.owners enable row level security;
+alter table public.clients enable row level security;
 alter table public.stores enable row level security;
 alter table public.orders enable row level security;
 alter table public.user_carts enable row level security;
@@ -144,40 +166,53 @@ alter table public.store_stats enable row level security;
 alter table public.order_products enable row level security;
 alter table public.website_builder_subscriptions enable row level security;
 
+-- Function to check if user is admin (Security Definer to bypass RLS recursion)
+create or replace function public.is_admin()
+returns boolean as $$
+begin
+  return exists (
+    select 1 from public.service_users
+    where id = auth.uid() and role = 'admin'
+  );
+end;
+$$ language plpgsql security definer;
+
 -- RLS Policies
 
 -- Service Users:
--- Users can read their own data
-create policy "Users can view own profile" 
+create policy "Users can view own service_user" 
   on public.service_users for select 
   using (auth.uid() = id);
 
--- Admins can view all users (This requires a recursive check or a secure function, 
--- but for simplicity we'll allow reading if the user claims to be admin in the table. 
--- Note: In a real secure app, use custom claims or a secure definer function)
-create policy "Admins can view all profiles" 
+create policy "Admins can view all service_users" 
   on public.service_users for select 
-  using (
-    exists (
-      select 1 from public.service_users 
-      where id = auth.uid() and role = 'admin'
-    )
-  );
+  using (public.is_admin());
 
--- Owners can view client users linked to their stores
+-- Owners:
+create policy "Owners can view own profile" 
+  on public.owners for select 
+  using (auth.uid() = id);
+
+create policy "Admins can view all owners" 
+  on public.owners for select 
+  using (public.is_admin());
+
+-- Clients:
+create policy "Clients can view own profile" 
+  on public.clients for select 
+  using (auth.uid() = id);
+
 create policy "Owners can view clients in their stores" 
-  on public.service_users for select 
+  on public.clients for select 
   using (
-    role = 'client' AND
     exists (
       select 1 from public.stores 
-      where stores.id = service_users.store_id 
+      where stores.id = clients.store_id 
       and stores.owner_id = auth.uid()
     )
   );
 
 -- Stores:
--- Owners can view/edit their own stores
 create policy "Owners can view own stores" 
   on public.stores for select 
   using (owner_id = auth.uid());
@@ -190,28 +225,15 @@ create policy "Owners can update own stores"
   on public.stores for update 
   using (owner_id = auth.uid());
 
--- Admins can view all stores
 create policy "Admins can view all stores" 
   on public.stores for select 
-  using (
-    exists (
-      select 1 from public.service_users 
-      where id = auth.uid() and role = 'admin'
-    )
-  );
+  using (public.is_admin());
   
--- Admins can update all stores (e.g. assigning URLs)
 create policy "Admins can update all stores" 
   on public.stores for update 
-  using (
-    exists (
-      select 1 from public.service_users 
-      where id = auth.uid() and role = 'admin'
-    )
-  );
+  using (public.is_admin());
 
 -- Orders:
--- Owners can view orders for their stores
 create policy "Owners can view store orders" 
   on public.orders for select 
   using (
@@ -222,36 +244,52 @@ create policy "Owners can view store orders"
     )
   );
 
--- Admins can view all orders
 create policy "Admins can view all orders" 
   on public.orders for select 
+  using (public.is_admin());
+
+-- User Carts:
+create policy "Clients can view own cart" 
+  on public.user_carts for select 
   using (
     exists (
-      select 1 from public.service_users 
-      where id = auth.uid() and role = 'admin'
+      select 1 from public.clients 
+      where id = user_carts.user_id 
+      and id = auth.uid()
     )
   );
 
--- User Carts:
--- Users can only access their own cart
-create policy "Users can view own cart" 
-  on public.user_carts for select 
-  using (auth.uid() = user_id);
-
-create policy "Users can insert own cart" 
+create policy "Clients can insert own cart" 
   on public.user_carts for insert 
-  with check (auth.uid() = user_id);
+  with check (
+    exists (
+      select 1 from public.clients 
+      where id = user_carts.user_id 
+      and id = auth.uid()
+    )
+  );
 
-create policy "Users can update own cart" 
+create policy "Clients can update own cart" 
   on public.user_carts for update 
-  using (auth.uid() = user_id);
+  using (
+    exists (
+      select 1 from public.clients 
+      where id = user_carts.user_id 
+      and id = auth.uid()
+    )
+  );
 
-create policy "Users can delete own cart" 
+create policy "Clients can delete own cart" 
   on public.user_carts for delete 
-  using (auth.uid() = user_id);
+  using (
+    exists (
+      select 1 from public.clients 
+      where id = user_carts.user_id 
+      and id = auth.uid()
+    )
+  );
 
 -- Appointments:
--- Owners can view appointments for their stores
 create policy "Owners can view store appointments" 
   on public.appointments for select 
   using (
@@ -262,7 +300,6 @@ create policy "Owners can view store appointments"
     )
   );
 
--- Owners can insert appointments for their stores
 create policy "Owners can create store appointments" 
   on public.appointments for insert 
   with check (
@@ -273,7 +310,6 @@ create policy "Owners can create store appointments"
     )
   );
 
--- Owners can update appointments for their stores
 create policy "Owners can update store appointments" 
   on public.appointments for update 
   using (
@@ -284,18 +320,15 @@ create policy "Owners can update store appointments"
     )
   );
 
--- Admins can view all appointments
 create policy "Admins can view all appointments" 
   on public.appointments for select 
-  using (
-    exists (
-      select 1 from public.service_users 
-      where id = auth.uid() and role = 'admin'
-    )
-  );
+  using (public.is_admin());
+  
+create policy "Clients can view own appointments" 
+  on public.appointments for select 
+  using (client_id = auth.uid());
 
 -- Store Stats:
--- Owners can view stats for their stores
 create policy "Owners can view own store stats" 
   on public.store_stats for select 
   using (
@@ -306,18 +339,11 @@ create policy "Owners can view own store stats"
     )
   );
 
--- Admins can view all store stats
 create policy "Admins can view all store stats" 
   on public.store_stats for select 
-  using (
-    exists (
-      select 1 from public.service_users 
-      where id = auth.uid() and role = 'admin'
-    )
-  );
+  using (public.is_admin());
 
 -- Order Products:
--- Owners can view order products for their stores
 create policy "Owners can view own order products" 
   on public.order_products for select 
   using (
@@ -328,27 +354,42 @@ create policy "Owners can view own order products"
     )
   );
 
--- Admins can view all order products
 create policy "Admins can view all order products" 
   on public.order_products for select 
-  using (
-    exists (
-      select 1 from public.service_users 
-      where id = auth.uid() and role = 'admin'
-    )
-  );
+  using (public.is_admin());
 
 -- Function to handle new user signup
 create or replace function public.handle_new_user() 
 returns trigger as $$
+declare
+  user_role text;
 begin
-  insert into public.service_users (id, email, name, role)
-  values (
-    new.id, 
-    new.email, 
-    new.raw_user_meta_data->>'name',
-    coalesce(new.raw_user_meta_data->>'role', 'owner')
-  );
+  user_role := coalesce(new.raw_user_meta_data->>'role', 'owner');
+  
+  -- Insert into base table
+  insert into public.service_users (id, role)
+  values (new.id, user_role);
+  
+  -- Insert into specific role table
+  if user_role = 'owner' then
+    insert into public.owners (id, email, name, role)
+    values (
+      new.id, 
+      new.email, 
+      new.raw_user_meta_data->>'name',
+      user_role
+    );
+  elsif user_role = 'client' then
+    -- Note: Store ID for client might need to be passed in metadata or updated later
+    insert into public.clients (id, email, name, role)
+    values (
+      new.id, 
+      new.email, 
+      new.raw_user_meta_data->>'name',
+      user_role
+    );
+  end if;
+  
   return new;
 end;
 $$ language plpgsql security definer;

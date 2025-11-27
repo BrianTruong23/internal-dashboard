@@ -34,7 +34,9 @@ export default async function StoresPage() {
     .from("stores")
     .select(`
       *,
-      owner:service_users!owner_id(email),
+      owner:service_users!owner_id(
+        owners(email)
+      ),
       stats:store_stats(total_revenue, total_orders)
     `)
     .order("created_at", { ascending: false });
@@ -52,15 +54,19 @@ export default async function StoresPage() {
   }
 
   // Transform data to match StoresTable interface
-  // store_stats is a single object due to unique constraint on store_id, but Supabase returns array by default unless .single() is used on a direct fetch. 
-  // However, in a join, it might return an array or object depending on relationship. 
-  // Since store_stats has unique(store_id), it's a 1:1 or 1:many. Let's handle it safely.
-  
-  const formattedStores = stores?.map((store: any) => ({
-    ...store,
-    owner: store.owner, // service_users joined
-    stats: Array.isArray(store.stats) ? store.stats[0] : store.stats // Handle potential array return
-  })) || [];
+  const formattedStores = stores?.map((store: any) => {
+    // Extract email from the nested owners object/array
+    // owner is service_users, which has owners relation
+    // owners might be an array or object depending on Supabase detection of 1:1
+    const ownerData = store.owner?.owners;
+    const email = Array.isArray(ownerData) ? ownerData[0]?.email : ownerData?.email;
+
+    return {
+      ...store,
+      owner: { email }, // Flatten structure for the table
+      stats: Array.isArray(store.stats) ? store.stats[0] : store.stats
+    };
+  }) || [];
 
   return (
     <div className="flex-1 space-y-4 p-8 pt-6">

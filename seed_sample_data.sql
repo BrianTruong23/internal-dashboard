@@ -4,16 +4,22 @@
 -- ============================================
 
 -- Note: Creating users in auth.users requires special handling
--- The trigger will automatically create service_users entries
+-- The trigger will automatically create service_users and owners entries
 
 -- For this demo, we'll assume you already have at least one user created
 -- through the UI (like testadmin@gmail.com)
 
 -- First, let's update existing user to admin if needed
+-- We need to update both service_users and owners if they exist
 UPDATE public.service_users 
 SET role = 'admin' 
-WHERE email LIKE '%admin%' OR email LIKE '%test%'
-LIMIT 1;
+WHERE id IN (
+  SELECT id FROM public.owners WHERE email LIKE '%admin%' OR email LIKE '%test%'
+);
+
+UPDATE public.owners
+SET role = 'admin'
+WHERE email LIKE '%admin%' OR email LIKE '%test%';
 
 -- Create additional sample service_users (these would normally come from auth.users)
 -- We'll insert them directly for demo purposes
@@ -31,9 +37,16 @@ BEGIN
   -- Get existing users from auth.users if they exist
   SELECT id INTO admin_id FROM auth.users WHERE email LIKE '%admin%' LIMIT 1;
   
-  -- If we have an admin, make sure they're in service_users as admin
+  -- If we have an admin, make sure they're in service_users/owners as admin
   IF admin_id IS NOT NULL THEN
-    INSERT INTO public.service_users (id, email, role)
+    -- Insert into base table
+    INSERT INTO public.service_users (id, role)
+    SELECT id, 'admin' FROM auth.users WHERE id = admin_id
+    ON CONFLICT (id) DO UPDATE SET role = 'admin';
+    
+    -- Insert into owners table (admins are also in owners table for now, or we could have an admins table)
+    -- For simplicity, let's assume admins are also owners
+    INSERT INTO public.owners (id, email, role)
     SELECT id, email, 'admin' FROM auth.users WHERE id = admin_id
     ON CONFLICT (id) DO UPDATE SET role = 'admin';
   END IF;
@@ -98,24 +111,9 @@ BEGIN
   END IF;
   
   -- Create sample cart data
-  IF owner1_id IS NOT NULL THEN
-    INSERT INTO public.user_carts (user_id, items)
-    VALUES (owner1_id, '[
-      {"id": "prod-1", "name": "Professional Racket", "price": 89.99, "quantity": 2},
-      {"id": "prod-2", "name": "Shuttlecocks Pack", "price": 15.99, "quantity": 3}
-    ]'::jsonb)
-    ON CONFLICT (user_id) DO NOTHING;
-  END IF;
+  -- Note: user_carts now references clients, but we don't have explicit clients created here yet.
+  -- Skipping user_carts creation for now or we need to create clients first.
   
-  IF owner2_id IS NOT NULL THEN
-    INSERT INTO public.user_carts (user_id, items)
-    VALUES (owner2_id, '[
-      {"id": "prod-3", "name": "Court Shoes", "price": 120.00, "quantity": 1},
-      {"id": "prod-4", "name": "Grip Tape", "price": 8.99, "quantity": 5}
-    ]'::jsonb)
-    ON CONFLICT (user_id) DO NOTHING;
-  END IF;
-
   -- Create sample appointments
   IF store1_id IS NOT NULL THEN
     INSERT INTO public.appointments (store_id, customer_email, customer_name, customer_phone, appointment_date, duration_minutes, appointment_type, status, notes)
@@ -152,26 +150,26 @@ END $$;
 -- Verify the data
 SELECT 'Service Users' as table_name, COUNT(*) as count FROM public.service_users
 UNION ALL
+SELECT 'Owners', COUNT(*) FROM public.owners
+UNION ALL
 SELECT 'Stores', COUNT(*) FROM public.stores
 UNION ALL
 SELECT 'Orders', COUNT(*) FROM public.orders
-UNION ALL
-SELECT 'User Carts', COUNT(*) FROM public.user_carts
 UNION ALL
 SELECT 'Appointments', COUNT(*) FROM public.appointments;
 
 -- Show summary
 SELECT 
   s.name as store_name,
-  su.email as owner_email,
-  COUNT(DISTINCT o.id) as order_count,
-  COALESCE(SUM(o.total_price), 0) as total_revenue,
+  o_user.email as owner_email,
+  COUNT(DISTINCT ord.id) as order_count,
+  COALESCE(SUM(ord.total_price), 0) as total_revenue,
   COUNT(DISTINCT a.id) as appointment_count
 FROM public.stores s
-LEFT JOIN public.service_users su ON s.owner_id = su.id
-LEFT JOIN public.orders o ON s.id = o.store_id
+LEFT JOIN public.owners o_user ON s.owner_id = o_user.id
+LEFT JOIN public.orders ord ON s.id = ord.store_id
 LEFT JOIN public.appointments a ON s.id = a.store_id
-GROUP BY s.id, s.name, su.email
+GROUP BY s.id, s.name, o_user.email
 ORDER BY total_revenue DESC;
 
 -- Show upcoming appointments
