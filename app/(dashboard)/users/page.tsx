@@ -1,103 +1,169 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { UsersTable } from "@/components/users/users-table";
+import { getUserRole } from "@/lib/auth-helper";
 
 export default async function UsersPage() {
   const supabase = await createClient();
-  
-  // Check auth and role
-  const { data: { user } } = await supabase.auth.getUser();
+
+  // 1. Auth
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
   if (!user) redirect("/login");
 
-  const { data: currentUserData } = await supabase
-    .from("service_users")
-    .select("role")
-    .eq("id", user.id)
-    .single();
+  // 2. Role
+  const userRole = await getUserRole(supabase, user.id);
 
-  const userRole = currentUserData?.role;
-
-  // Admins and owners can access this page
+  // Only admins and owners can access this page
   if (userRole !== "admin" && userRole !== "owner") {
     redirect("/");
   }
 
-  let users;
-  let error;
-  let storesList;
+  let users: any[] | undefined;
+  let error: any = null;
+  let storesList: any[] = [];
 
   if (userRole === "admin") {
-    // Fetch all stores for filter
-    const { data: allStores } = await supabase
-      .from("stores")
-      .select("id, name")
-      .order("name");
-    storesList = allStores || [];
+    // ============================
+    // ADMIN PATH
+    // ============================
 
-    // Admins see ALL users
-    const result = await supabase
+    // 1. Fetch all stores (for filters / UI)
+    {
+      const { data: allStores, error: storesError } = await supabase
+        .from("stores")
+        .select("id, name")
+        .order("name");
+
+      if (storesError) {
+        console.error("Error fetching stores for admin:", storesError);
+      }
+
+      storesList = allStores || [];
+    }
+
+    // 2. Fetch base service_users with owners/clients joins
+    const {
+      data: serviceUsers,
+      error: serviceUsersError,
+    } = await supabase
       .from("service_users")
-      .select(`
-        *,
-        stores!store_id (
+      .select(
+        `
+        id,
+        role,
+        created_at,
+        owners (
+          email,
           name
+        ),
+        clients (
+          email,
+          name,
+          store_id
         )
-      `);
-    users = result.data;
-    error = result.error;
+      `
+      )
+      .order("created_at", { ascending: false });
+
+    // 3. Fetch admins list to tag admins
+    const { data: adminsList, error: adminsError } = await supabase
+      .from("admins")
+      .select("id");
+
+    if (adminsError) {
+      console.error("Error fetching admins list:", adminsError);
+    }
+
+    const adminIds = new Set((adminsList || []).map((a) => a.id));
+
+    // 4. Merge and determine correct role per user
+    users =
+      serviceUsers?.map((u: any) => {
+        let realRole = u.role;
+
+        if (adminIds.has(u.id)) {
+          realRole = "admin";
+        } else if (u.owners) {
+          realRole = "owner";
+        } else if (u.clients) {
+          realRole = "client";
+        }
+
+        const details = u.owners || u.clients || {};
+
+        return {
+          id: u.id,
+          email: details.email || "No Email",
+          name: details.name || "No Name",
+          role: realRole,
+          created_at: u.created_at,
+          // you can later wire this up if you want per-user stores
+          stores: [],
+        };
+      }) || [];
+
+    error = serviceUsersError;
   } else {
-    // Owners see only CLIENTS associated with their stores
+    // ============================
+    // OWNER PATH
+    // ============================
     console.log("=== USERS PAGE DEBUG (OWNER) ===");
-    console.log("1. Current owner_id (user.id):", user.id);
-    console.log("   Owner email:", user.email);
-    
-    // First get owner's store IDs
-    const { data: ownerStores, error: storesError } = await supabase
+
+    // 1. Get stores owned by this user
+    const { data: ownerStores, error: ownerStoresError } = await supabase
       .from("stores")
       .select("id, name")
       .eq("owner_id", user.id);
 
-    console.log("2. Stores owned by this user:");
-    console.log("   Query: SELECT id, name FROM stores WHERE owner_id =", user.id);
-    console.log("   Result:", ownerStores);
-    console.log("   Error:", storesError);
+    if (ownerStoresError) {
+      console.error("Error fetching owner stores:", ownerStoresError);
+    }
 
-    // Set stores list for filter
     storesList = ownerStores || [];
-
-    const storeIds = ownerStores?.map(s => s.id) || [];
-    console.log("3. Extracted store_ids:", storeIds);
+    const storeIds = (ownerStores || []).map((s) => s.id);
 
     if (storeIds.length === 0) {
-      console.log("4. No stores found for this owner. Returning empty users.");
-      // No stores for this owner, return empty users
+      // No stores = no clients
       users = [];
       error = null;
     } else {
-      console.log("4. Querying service_users for clients with these store_ids...");
-      console.log("   Query: SELECT * FROM service_users WHERE role='client' AND store_id IN", storeIds);
-      
-      // Then get clients for those stores
-      const result = await supabase
-        .from("service_users")
-        .select(`
-          *,
-          stores!store_id (
-            name
-          )
-        `)
-        .eq("role", "client")
+      // 2. Get clients whose store_id is in the owner's stores
+      const {
+        data: clientsData,
+        error: clientsError,
+      } = await supabase
+        .from("clients")
+        .select(
+          `
+          id,
+          email,
+          name,
+          store_id,
+          created_at
+        `
+        )
         .in("store_id", storeIds);
-      
-      console.log("5. Client users result:");
-      console.log("   Data:", result.data);
-      console.log("   Error:", result.error);
-      console.log("   Count:", result.data?.length || 0);
-      
-      users = result.data;
-      error = result.error;
+
+      if (clientsError) {
+        console.error("Error fetching clients for owner:", clientsError);
+      }
+
+      users =
+        clientsData?.map((c: any) => ({
+          id: c.id,
+          email: c.email,
+          name: c.name,
+          role: "client",
+          created_at: c.created_at,
+          store_id: c.store_id,
+          stores: [], // can be enriched on the UI using storesList if needed
+        })) || [];
+
+      error = clientsError;
     }
-    console.log("=== END DEBUG ===");
   }
 
   console.log("Final users:", users);
@@ -116,11 +182,13 @@ export default async function UsersPage() {
             {userRole === "admin" ? "All Users" : "My Clients"}
           </h2>
           <p className="text-muted-foreground">
-            {userRole === "admin" ? "Manage all users and their roles" : "View clients linked to your stores"}
+            {userRole === "admin"
+              ? "Manage all users and their roles"
+              : "View clients linked to your stores"}
           </p>
         </div>
       </div>
-      
+
       <UsersTable users={users || []} stores={storesList || []} />
     </div>
   );

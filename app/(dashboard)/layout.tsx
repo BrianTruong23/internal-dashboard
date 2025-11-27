@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { AdminSidebar } from "@/components/dashboard/admin-sidebar";
 import { StoreOwnerSidebar } from "@/components/dashboard/store-owner-sidebar";
 import { redirect } from "next/navigation";
+import { getUserRole } from "@/lib/auth-helper";
 
 export default async function DashboardLayout({
   children,
@@ -16,14 +17,8 @@ export default async function DashboardLayout({
     redirect("/login");
   }
 
-  // Fetch user role
-  const { data: userData } = await supabase
-    .from("service_users")
-    .select("role")
-    .eq("id", user.id)
-    .single();
-
-  const userRole = userData?.role || "owner";
+  // Determine user role using robust helper
+  const userRole = await getUserRole(supabase, user.id);
   
   // Fetch store URL for "Visit Website" link
   let storeUrl = "https://example.com"; // Default fallback

@@ -3,6 +3,7 @@ import { Overview } from "@/components/dashboard/overview";
 import { Users, Store, TrendingUp, Activity, DollarSign } from "lucide-react";
 import StoreOwnerOverviewPage from "@/components/dashboard/store-owner-overview";
 import { redirect } from "next/navigation";
+import { getUserRole } from "@/lib/auth-helper";
 
 // Admin Overview Component
 function AdminOverview({ 
@@ -102,28 +103,34 @@ export default async function DashboardPage() {
     redirect("/login");
   }
 
-  // Fetch user role
-  const { data: userData, error: userError } = await supabase
-    .from("service_users")
-    .select("role")
-    .eq("id", user.id)
-    .single();
-
+  // Determine user role using robust helper
+  const userRole = await getUserRole(supabase, user.id);
+  
   console.log("Dashboard Debug:");
   console.log("User ID:", user.id);
-  console.log("User Data:", userData);
-  console.log("User Error:", userError);
-
-  const userRole = userData?.role || "owner";
   console.log("Determined Role:", userRole);
 
   if (userRole === "admin") {
     // Fetch Owners
-    const { data: owners } = await supabase
-      .from("service_users")
-      .select("created_at")
-      .eq("role", "owner")
+    const { data: owners, error: ownersError } = await supabase
+      .from("owners")
+      .select("*") // Select all to see names for debug
       .order("created_at", { ascending: true });
+
+    console.log("DEBUG: Owners Query Result:", { count: owners?.length, error: ownersError });
+    if (owners?.length === 0) console.log("DEBUG: No owners found. RLS might be hiding them.");
+
+    // DEBUG: Check Admins Table
+    const { data: adminsDebug, error: adminsError } = await supabase
+      .from("admins")
+      .select("*");
+    console.log("DEBUG: Admins Table:", { data: adminsDebug, error: adminsError });
+
+    // DEBUG: Check Service Users Table
+    const { data: serviceUsersDebug, error: serviceUsersError } = await supabase
+      .from("service_users")
+      .select("*");
+    console.log("DEBUG: Service Users Table:", { count: serviceUsersDebug?.length, error: serviceUsersError });
       
     // Fetch Stores
     const { data: stores } = await supabase

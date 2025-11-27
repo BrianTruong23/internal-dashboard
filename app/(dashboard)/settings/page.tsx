@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { SettingsClient } from "@/components/dashboard/settings-client";
+import { getUserRole } from "@/lib/auth-helper";
 
 export default async function SettingsPage() {
   const supabase = await createClient();
@@ -10,20 +11,22 @@ export default async function SettingsPage() {
   if (!user) redirect("/login");
 
   // Check admin role
-  const { data: userData } = await supabase
-    .from("service_users")
-    .select("role")
-    .eq("id", user.id)
-    .single();
+  const userRole = await getUserRole(supabase, user.id);
 
-  if (userData?.role !== "admin") {
+  if (userRole !== "admin") {
     redirect("/");
   }
 
   // Fetch all owners
   const { data: users } = await supabase
     .from("service_users")
-    .select("*")
+    .select(`
+      *,
+      owners (
+        email,
+        name
+      )
+    `)
     .eq("role", "owner");
 
   // Fetch all stores
@@ -32,16 +35,15 @@ export default async function SettingsPage() {
     .select("*");
 
   // Map to format expected by client component
-  // We need to map Supabase user to the User interface expected by SettingsClient
-  // Or update SettingsClient to accept Supabase types. 
-  // For now, let's map it to keep Client component simple.
-  
-  const mappedUsers = users?.map((u: any) => ({
-    id: u.id,
-    name: u.email, // We don't have name in service_users yet, use email
-    email: u.email,
-    role: u.role
-  })) || [];
+  const mappedUsers = users?.map((u: any) => {
+    const ownerDetails = u.owners || {};
+    return {
+      id: u.id,
+      name: ownerDetails.name || ownerDetails.email || "Unknown",
+      email: ownerDetails.email || "",
+      role: u.role
+    };
+  }) || [];
 
   const mappedStores = stores?.map((s: any) => ({
     id: s.id,

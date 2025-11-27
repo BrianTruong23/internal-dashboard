@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { OrdersTable } from "@/components/orders/orders-table";
+import { getUserRole } from "@/lib/auth-helper";
 
 export default async function OrdersPage() {
   const supabase = await createClient();
@@ -13,13 +14,7 @@ export default async function OrdersPage() {
   }
 
   // Fetch user role
-  const { data: userData } = await supabase
-    .from("service_users")
-    .select("role")
-    .eq("id", user.id)
-    .single();
-
-  const userRole = userData?.role || "owner";
+  const userRole = await getUserRole(supabase, user.id);
 
   // Fetch stores for filter dropdown
   let stores;

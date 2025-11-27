@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { StoresTable } from "@/components/stores/stores-table";
+import { getUserRole } from "@/lib/auth-helper";
 
 export default async function StoresPage() {
   const supabase = await createClient();
@@ -13,13 +14,7 @@ export default async function StoresPage() {
   }
 
   // Fetch user role
-  const { data: userData } = await supabase
-    .from("service_users")
-    .select("role")
-    .eq("id", user.id)
-    .single();
-
-  const userRole = userData?.role || "owner";
+  const userRole = await getUserRole(supabase, user.id);
 
   // Only admins should see this page (or owners see their own stores)
   // For now, let's assume this is the Admin Stores page as per request
