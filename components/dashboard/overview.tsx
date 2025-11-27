@@ -60,7 +60,7 @@ const data = [
   },
 ];
 
-export function Overview() {
+export function Overview({ data }: { data: any[] }) {
   return (
     <ResponsiveContainer width="100%" height={350}>
       <LineChart data={data}>

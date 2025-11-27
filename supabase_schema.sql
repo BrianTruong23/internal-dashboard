@@ -8,91 +8,130 @@ drop table if exists public.order_products cascade;
 drop table if exists public.store_stats cascade;
 drop table if exists public.appointments cascade;
 drop table if exists public.orders cascade;
+drop table if exists public.website_builder_subscriptions cascade;
 drop table if exists public.stores cascade;
 drop table if exists public.user_carts cascade;
 drop table if exists public.service_users cascade;
 
--- 1. Create service_users table (Platform users: Admins + Store Owners)
-create table public.service_users (
-  id uuid references auth.users on delete cascade not null primary key,
-  email text not null unique,
-  role text not null check (role in ('admin', 'owner')),
-  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+-- 1. Create service_users table (Platform users: Admins + Store Owners + Clients)
+-- Note: Foreign key to stores added later to avoid circular dependency
+CREATE TABLE public.service_users (
+  id uuid NOT NULL,
+  email text NOT NULL,
+  role text NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  store_id uuid,
+  name text,
+  CONSTRAINT service_users_pkey PRIMARY KEY (id),
+  CONSTRAINT service_users_id_fkey FOREIGN KEY (id) REFERENCES auth.users(id)
 );
 
 -- 2. Create stores table
-create table public.stores (
-  id uuid default uuid_generate_v4() primary key,
-  owner_id uuid references public.service_users(id) on delete cascade not null,
-  name text not null,
-  slug text, -- e.g. "badminton" or domain
-  url text, -- Full website URL
+CREATE TABLE public.stores (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  owner_id uuid NOT NULL,
+  name text NOT NULL,
+  slug text,
+  url text,
   category text,
-  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
-  last_active timestamp with time zone default timezone('utc'::text, now())
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  last_active timestamp with time zone,
+  CONSTRAINT stores_pkey PRIMARY KEY (id),
+  CONSTRAINT stores_owner_id_fkey FOREIGN KEY (owner_id) REFERENCES public.service_users(id)
 );
+
+-- Add circular foreign key for service_users
+ALTER TABLE public.service_users 
+ADD CONSTRAINT service_users_store_id_fkey FOREIGN KEY (store_id) REFERENCES public.stores(id);
 
 -- 3. Create orders table
-create table public.orders (
-  id uuid default uuid_generate_v4() primary key,
-  store_id uuid references public.stores(id) on delete cascade not null,
-  customer_email text not null,
-  customer_name text,
-  total_price numeric(10, 2) not null,
-  currency text default 'USD',
-  status text default 'pending', -- pending, paid, shipped, cancelled
-  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+CREATE TABLE public.orders (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  store_id uuid NOT NULL,
+  customer_email text NOT NULL,
+  customer_name text NOT NULL,
+  total_price numeric NOT NULL,
+  currency text NOT NULL,
+  status text NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT orders_pkey PRIMARY KEY (id),
+  CONSTRAINT orders_store_id_fkey FOREIGN KEY (store_id) REFERENCES public.stores(id)
 );
 
--- 4. Create user_carts table (for persistent cart storage)
-create table public.user_carts (
-  id uuid default gen_random_uuid() primary key,
-  user_id uuid references auth.users(id) on delete cascade not null,
-  items jsonb not null default '[]'::jsonb,
-  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
-  updated_at timestamp with time zone default timezone('utc'::text, now()) not null,
-  unique(user_id)
+-- 4. Create user_carts table
+CREATE TABLE public.user_carts (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  items jsonb NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT user_carts_pkey PRIMARY KEY (id),
+  CONSTRAINT user_carts_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
 );
 
--- 5. Create appointments table (for booking court time, coaching, etc.)
-create table public.appointments (
-  id uuid default gen_random_uuid() primary key,
-  store_id uuid references public.stores(id) on delete cascade not null,
-  customer_email text not null,
-  customer_name text not null,
+-- 5. Create appointments table
+CREATE TABLE public.appointments (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  store_id uuid NOT NULL,
+  customer_email text NOT NULL,
+  customer_name text NOT NULL,
   customer_phone text,
-  appointment_date timestamp with time zone not null,
-  duration_minutes integer not null default 60,
-  appointment_type text not null, -- e.g., 'court_booking', 'coaching', 'group_session'
-  status text default 'pending' check (status in ('pending', 'confirmed', 'cancelled', 'completed')),
+  appointment_date timestamp with time zone NOT NULL,
+  duration_minutes integer NOT NULL,
+  appointment_type text NOT NULL,
+  status text NOT NULL,
   notes text,
-  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
-  updated_at timestamp with time zone default timezone('utc'::text, now()) not null
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT appointments_pkey PRIMARY KEY (id),
+  CONSTRAINT appointments_store_id_fkey FOREIGN KEY (store_id) REFERENCES public.stores(id)
 );
 
--- 6. Create store_stats table (for tracking store metrics)
-create table public.store_stats (
-  id uuid default gen_random_uuid() primary key,
-  store_id uuid references public.stores(id) on delete cascade not null,
-  total_revenue numeric(10, 2) not null default 0,
-  total_orders integer not null default 0,
-  total_products_sold integer not null default 0,
-  updated_at timestamp with time zone default timezone('utc'::text, now()) not null,
-  unique(store_id)
+-- 6. Create store_stats table
+CREATE TABLE public.store_stats (
+  store_id uuid NOT NULL,
+  total_revenue numeric NOT NULL DEFAULT 0,
+  total_orders integer NOT NULL DEFAULT 0,
+  total_products_sold integer NOT NULL DEFAULT 0,
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT store_stats_pkey PRIMARY KEY (store_id),
+  CONSTRAINT store_stats_store_id_fkey FOREIGN KEY (store_id) REFERENCES public.stores(id)
 );
 
--- 7. Create order_products table (order line items with product details)
-create table public.order_products (
-  id uuid default gen_random_uuid() primary key,
-  order_id uuid references public.orders(id) on delete cascade not null,
-  store_id uuid references public.stores(id) on delete cascade not null,
-  product_name text not null,
+-- 7. Create order_products table
+CREATE TABLE public.order_products (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  order_id uuid NOT NULL,
+  store_id uuid NOT NULL,
+  product_name text NOT NULL,
   sku text,
-  quantity integer not null default 1,
-  unit_price numeric(10, 2) not null,
-  currency text default 'USD',
-  line_total numeric(10, 2) not null,
-  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+  quantity integer NOT NULL CHECK (quantity > 0),
+  unit_price numeric NOT NULL,
+  currency text NOT NULL,
+  line_total numeric DEFAULT ((quantity)::numeric * unit_price),
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT order_products_pkey PRIMARY KEY (id),
+  CONSTRAINT order_products_order_id_fkey FOREIGN KEY (order_id) REFERENCES public.orders(id),
+  CONSTRAINT order_products_store_id_fkey FOREIGN KEY (store_id) REFERENCES public.stores(id)
+);
+
+-- 8. Create website_builder_subscriptions table
+CREATE TABLE public.website_builder_subscriptions (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  owner_id uuid NOT NULL UNIQUE,
+  plan_name text NOT NULL,
+  plan_interval text NOT NULL DEFAULT 'monthly'::text,
+  plan_price numeric NOT NULL,
+  currency text NOT NULL DEFAULT 'USD'::text,
+  is_active boolean NOT NULL DEFAULT true,
+  billing_started_at timestamp with time zone NOT NULL DEFAULT now(),
+  billing_ended_at timestamp with time zone,
+  total_revenue numeric NOT NULL DEFAULT 0,
+  last_payment_at timestamp with time zone,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT website_builder_subscriptions_pkey PRIMARY KEY (id),
+  CONSTRAINT website_builder_subscriptions_owner_id_fkey FOREIGN KEY (owner_id) REFERENCES public.service_users(id)
 );
 
 -- Enable Row Level Security (RLS)
@@ -103,6 +142,7 @@ alter table public.user_carts enable row level security;
 alter table public.appointments enable row level security;
 alter table public.store_stats enable row level security;
 alter table public.order_products enable row level security;
+alter table public.website_builder_subscriptions enable row level security;
 
 -- RLS Policies
 
@@ -121,6 +161,18 @@ create policy "Admins can view all profiles"
     exists (
       select 1 from public.service_users 
       where id = auth.uid() and role = 'admin'
+    )
+  );
+
+-- Owners can view client users linked to their stores
+create policy "Owners can view clients in their stores" 
+  on public.service_users for select 
+  using (
+    role = 'client' AND
+    exists (
+      select 1 from public.stores 
+      where stores.id = service_users.store_id 
+      and stores.owner_id = auth.uid()
     )
   );
 
@@ -290,8 +342,13 @@ create policy "Admins can view all order products"
 create or replace function public.handle_new_user() 
 returns trigger as $$
 begin
-  insert into public.service_users (id, email, role)
-  values (new.id, new.email, coalesce(new.raw_user_meta_data->>'role', 'owner'));
+  insert into public.service_users (id, email, name, role)
+  values (
+    new.id, 
+    new.email, 
+    new.raw_user_meta_data->>'name',
+    coalesce(new.raw_user_meta_data->>'role', 'owner')
+  );
   return new;
 end;
 $$ language plpgsql security definer;

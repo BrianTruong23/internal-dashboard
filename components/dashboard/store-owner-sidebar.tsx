@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LayoutDashboard, ShoppingCart, ExternalLink, LogOut } from "lucide-react";
+import { LayoutDashboard, ShoppingCart, ExternalLink, LogOut, Users } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
@@ -18,6 +18,12 @@ const routes = [
     icon: ShoppingCart,
     href: "/orders",
     color: "text-violet-500",
+  },
+  {
+    label: "Users",
+    icon: Users,
+    href: "/users",
+    color: "text-pink-700",
   },
 ];
 

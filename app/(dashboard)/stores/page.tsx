@@ -1,151 +1,79 @@
-import { Store, ExternalLink, Activity } from "lucide-react";
+import { createClient } from "@/lib/supabase/server";
+import { redirect } from "next/navigation";
+import { StoresTable } from "@/components/stores/stores-table";
 
-const stores = [
-  {
-    id: "1",
-    name: "Fashion Boutique",
-    owner: "Admin User",
-    url: "https://fashionboutique.com",
-    category: "Fashion",
-    status: "Active",
-    orders: 145,
-    revenue: "$12,450",
-  },
-  {
-    id: "2",
-    name: "Tech Gadgets Store",
-    owner: "Admin User",
-    url: "https://techgadgets.com",
-    category: "Electronics",
-    status: "Active",
-    orders: 298,
-    revenue: "$45,890",
-  },
-  {
-    id: "3",
-    name: "Organic Foods Market",
-    owner: "John Merchant",
-    url: "https://organicfoods.com",
-    category: "Food & Beverage",
-    status: "Active",
-    orders: 187,
-    revenue: "$23,670",
-  },
-  {
-    id: "4",
-    name: "Beauty & Wellness",
-    owner: "Sarah Johnson",
-    url: "https://beautywellness.com",
-    category: "Beauty",
-    status: "Active",
-    orders: 234,
-    revenue: "$31,240",
-  },
-  {
-    id: "5",
-    name: "Home Decor Shop",
-    owner: "Sarah Johnson",
-    url: "https://homedecor.com",
-    category: "Home & Living",
-    status: "Active",
-    orders: 156,
-    revenue: "$18,920",
-  },
-];
+export default async function StoresPage() {
+  const supabase = await createClient();
+  
+  // Get current user
+  const { data: { user } } = await supabase.auth.getUser();
+  
+  if (!user) {
+    redirect("/login");
+  }
 
-export default function StoresPage() {
+  // Fetch user role
+  const { data: userData } = await supabase
+    .from("service_users")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+
+  const userRole = userData?.role || "owner";
+
+  // Only admins should see this page (or owners see their own stores)
+  // For now, let's assume this is the Admin Stores page as per request
+  if (userRole !== "admin") {
+    // If owner, maybe redirect to their dashboard or show only their stores?
+    // The prompt implies this is for "Admin Stores Page"
+    // But let's be safe and allow owners to see their own stores if they land here
+  }
+
+  // Fetch stores with owner details and stats
+  let query = supabase
+    .from("stores")
+    .select(`
+      *,
+      owner:service_users!owner_id(email),
+      stats:store_stats(total_revenue, total_orders)
+    `)
+    .order("created_at", { ascending: false });
+
+  // If not admin, filter by owner_id
+  if (userRole !== "admin") {
+    query = query.eq("owner_id", user.id);
+  }
+
+  const { data: stores, error } = await query;
+
+  if (error) {
+    console.error("Error fetching stores:", error);
+    return <div>Error loading stores: {error.message}</div>;
+  }
+
+  // Transform data to match StoresTable interface
+  // store_stats is a single object due to unique constraint on store_id, but Supabase returns array by default unless .single() is used on a direct fetch. 
+  // However, in a join, it might return an array or object depending on relationship. 
+  // Since store_stats has unique(store_id), it's a 1:1 or 1:many. Let's handle it safely.
+  
+  const formattedStores = stores?.map((store: any) => ({
+    ...store,
+    owner: store.owner, // service_users joined
+    stats: Array.isArray(store.stats) ? store.stats[0] : store.stats // Handle potential array return
+  })) || [];
+
   return (
     <div className="flex-1 space-y-4 p-8 pt-6">
       <div className="flex items-center justify-between space-y-2">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">All Stores</h2>
+          <h2 className="text-3xl font-bold tracking-tight">Stores</h2>
           <p className="text-muted-foreground">
-            Manage all registered stores on the platform
+            Manage and monitor all registered stores
           </p>
         </div>
       </div>
-      <div className="rounded-md border bg-card text-card-foreground shadow-sm">
-        <div className="p-6">
-          <div className="relative w-full overflow-auto">
-            <table className="w-full caption-bottom text-sm">
-              <thead className="[&_tr]:border-b">
-                <tr className="border-b transition-colors hover:bg-muted/50">
-                  <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
-                    Store
-                  </th>
-                  <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
-                    Owner
-                  </th>
-                  <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
-                    Category
-                  </th>
-                  <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
-                    URL
-                  </th>
-                  <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
-                    Orders
-                  </th>
-                  <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
-                    Revenue
-                  </th>
-                  <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
-                    Status
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="[&_tr:last-child]:border-0">
-                {stores.map((store) => (
-                  <tr
-                    key={store.id}
-                    className="border-b transition-colors hover:bg-muted/50"
-                  >
-                    <td className="p-4 align-middle">
-                      <div className="flex items-center gap-2">
-                        <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center">
-                          <Store className="h-4 w-4" />
-                        </div>
-                        <span className="font-medium">{store.name}</span>
-                      </div>
-                    </td>
-                    <td className="p-4 align-middle">
-                      {store.owner}
-                    </td>
-                    <td className="p-4 align-middle">
-                      <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold bg-secondary">
-                        {store.category}
-                      </span>
-                    </td>
-                    <td className="p-4 align-middle">
-                      <a
-                        href={store.url}
-                        target="_blank"
-                        className="flex items-center gap-1 text-primary hover:underline"
-                      >
-                        <ExternalLink className="h-3 w-3" />
-                        <span className="text-xs">{store.url.replace('https://', '')}</span>
-                      </a>
-                    </td>
-                    <td className="p-4 align-middle font-semibold">
-                      {store.orders}
-                    </td>
-                    <td className="p-4 align-middle font-semibold text-green-600">
-                      {store.revenue}
-                    </td>
-                    <td className="p-4 align-middle">
-                      <div className="flex items-center gap-2">
-                        <Activity className="h-4 w-4 text-green-500" />
-                        <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300">
-                          {store.status}
-                        </span>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
+      
+      <StoresTable stores={formattedStores} />
     </div>
   );
 }
