@@ -52,6 +52,20 @@ export async function POST(request: NextRequest) {
     }
 
     // Note: The trigger in Supabase will handle creating the service_users row
+    // However, we want to ensure they have the owner role and are definitely in the table
+    const { error: serviceUserError } = await supabase
+      .from('service_users')
+      .upsert({
+        id: data.user.id,
+        role: 'owner',
+      });
+
+    if (serviceUserError) {
+      console.error(`[Register API] Failed to create service user:`, serviceUserError);
+      // We don't fail the whole request since the auth user was created, 
+      // but we should probably log it or maybe try to clean up. 
+      // For now, we'll just log it.
+    }
     
     console.log(`[Register API] User created successfully: ${data.user.id}`);
 
