@@ -1,14 +1,25 @@
 # Internal Dashboard
 
-A Next.js internal dashboard application with user authentication, analytics, and data management.
+A modern, full-stack internal dashboard application built with **Next.js 16** and **Supabase**, featuring real-time analytics, user management, and order tracking.
 
 ## Features
 
-- 🔐 **Authentication**: Email/password login with NextAuth.js
-- 📊 **Analytics Dashboard**: Visual charts showing order trends over time
-- 📋 **Orders Management**: View and track product orders
-- 👥 **User Management**: Manage internal users
-- 🎨 **Modern UI**: Built with Tailwind CSS and custom components
+- 🔐 **Authentication**: Secure email/password login powered by Supabase Auth.
+- 📊 **Analytics Dashboard**: Visual charts showing revenue, orders, and product trends using Recharts.
+- 🛍️ **Order Management**: Comprehensive view of customer orders with status tracking.
+- 👥 **User Management**: Admin interface to manage internal users and roles.
+- ⚡ **Real-time Data**: Leveraging Supabase's real-time capabilities for instant updates.
+- 🤖 **Database Automation**: extensive use of PostgreSQL triggers and functions for data consistency.
+- 🎨 **Modern UI**: Built with Tailwind CSS v4 and custom accessible components.
+
+## Tech Stack
+
+- **Framework**: [Next.js 16](https://nextjs.org/) (App Router)
+- **Backend & Database**: [Supabase](https://supabase.com/) (PostgreSQL)
+- **Styling**: [Tailwind CSS v4](https://tailwindcss.com/)
+- **Charts**: [Recharts](https://recharts.org/)
+- **Icons**: [Lucide React](https://lucide.dev/)
+- **Language**: TypeScript
 
 ## Getting Started
 
@@ -16,73 +27,77 @@ A Next.js internal dashboard application with user authentication, analytics, an
 
 - Node.js 18+ installed
 - npm or yarn package manager
+- A Supabase project
 
 ### Installation
 
-1. Clone the repository
-2. Install dependencies:
+1. **Clone the repository**
+
+   ```bash
+   git clone <repository-url>
+   cd internal-dashboard
+   ```
+
+2. **Install dependencies**
+
    ```bash
    npm install
    ```
 
-3. Ensure the `.env` file exists with:
-   ```
-   NEXTAUTH_SECRET=supersecretkey123
-   NEXTAUTH_URL=http://localhost:3000
+3. **Environment Setup**
+
+   Create a `.env` file in the root directory and add your Supabase credentials:
+
+   ```env
+   NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
+   NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
    ```
 
-4. Run the development server:
+4. **Database Setup**
+
+   This project relies on several SQL scripts for setting up tables, triggers, and seeding data. You can find these in the root directory:
+
+   - `supabase_schema.sql`: Core database schema.
+   - `seed_sample_data.sql`: Sample data for testing.
+   - `create_store_stats_triggers.sql`: Triggers for maintaining store statistics.
+   - `fix_triggers_v2.sql`: Latest fixes for database triggers.
+
+   Run these scripts in your Supabase SQL Editor to set up your database.
+
+5. **Run the development server**
+
    ```bash
    npm run dev
    ```
 
-5. Open [http://localhost:3000](http://localhost:3000) in your browser
-
-### Login Credentials
-
-For demo purposes, you can login with:
-- **Email**: `admin@example.com`
-- **Password**: `password`
-
-(Or any other email/password - authentication is mocked for demonstration)
-
-## Tech Stack
-
-- **Framework**: Next.js 16 (App Router)
-- **Authentication**: NextAuth.js v4
-- **Styling**: Tailwind CSS v4
-- **Charts**: Recharts
-- **Icons**: Lucide React
-- **TypeScript**: Full type safety
+   Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ## Project Structure
 
 ```
-app/
-  (auth)/login/          # Login page
-  (dashboard)/           # Protected dashboard routes
-    layout.tsx           # Dashboard layout with sidebar
-    page.tsx             # Analytics overview
-    orders/page.tsx      # Orders table
-    users/page.tsx       # Users table
-  api/auth/[...nextauth] # NextAuth API routes
-components/
-  dashboard/             # Dashboard-specific components
-  ui/                    # Reusable UI components
-lib/
-  auth.ts                # NextAuth configuration
-  utils.ts               # Utility functions
+├── app/
+│   ├── (auth)/             # Authentication routes (login)
+│   ├── (dashboard)/        # Protected dashboard routes
+│   │   ├── layout.tsx      # Dashboard shell with sidebar
+│   │   ├── page.tsx        # Main analytics dashboard
+│   │   ├── orders/         # Orders management
+│   │   └── users/          # User management
+│   └── api/                # API routes
+├── components/
+│   ├── dashboard/          # Dashboard-specific widgets
+│   └── ui/                 # Reusable UI components
+├── lib/
+│   ├── supabase/           # Supabase client configuration
+│   │   ├── client.ts       # Browser client
+│   │   └── server.ts       # Server client (SSR/Actions)
+│   └── utils.ts            # Helper functions
+├── public/                 # Static assets
+└── *.sql                   # Database schema and migration scripts
 ```
 
-## Building for Production
+## Scripts
 
-```bash
-npm run build
-npm start
-```
-
-## Notes
-
-- This is a demonstration project with mock data
-- In production, replace mock authentication with a real user database
-- Update the NEXTAUTH_SECRET to a strong random value
+- `npm run dev`: Starts the development server.
+- `npm run build`: Builds the application for production.
+- `npm start`: Runs the built production application.
+- `npm run lint`: Runs ESLint to check for code quality issues.
